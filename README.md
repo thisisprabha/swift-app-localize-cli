@@ -88,6 +88,13 @@ Use `--stringsdict report` to disable auto-generation.
 ## Security
 Do not commit API keys. Use `OPENAI_API_KEY` in your shell environment.
 
+## Release Checklist
+- Run `swift test`
+- Run `swift build -c release`
+- Verify `extract` and `translate` on a sample app
+- Confirm README examples are up to date
+- Tag the release (e.g., `git tag -a v0.1.0 -m "v0.1.0"`)
+
 ## Roadmap
 - UIKit/AppKit extraction
 - Interpolation handling for pluralization
