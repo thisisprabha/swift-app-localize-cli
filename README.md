@@ -10,13 +10,30 @@ A SwiftPM-based CLI that extracts base English localizations from SwiftUI code a
 - `.stringsdict` auto-generation for strict plural formats
 - JSON report output for auditing
 
-## Install
+## Requirements
+- macOS 13+
+- Swift 5.9+ (Xcode Command Line Tools)
+- OpenAI API key for `translate`
+
+## Install (Quick)
 ```bash
 swift build -c release
 ```
 
 Binary:
 - `./.build/release/i18n-cli`
+
+## Install (Non-Technical)
+1. Go to the GitHub repo page and click **Code → Download ZIP**.
+2. Unzip the file (you will get a folder like `swift-app-localize-cli`).
+3. Open **Terminal**.
+4. Type `cd ` (with a space), then drag the unzipped folder into Terminal and press Enter.
+5. Run:
+   ```bash
+   swift build -c release
+   ```
+
+If you see a prompt to install Xcode Command Line Tools, accept it.
 
 ## Quick Start
 ```bash
