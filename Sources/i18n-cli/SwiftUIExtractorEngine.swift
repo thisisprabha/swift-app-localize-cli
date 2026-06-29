@@ -485,6 +485,47 @@ final class SwiftUILiteralCollector: SyntaxVisitor {
         return .visitChildren
     }
 
+    override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
+        // Detect .title = "..." patterns on UIKit types
+        // SequenceExpr wraps: [MemberAccessExpr, AssignmentExpr, StringLiteralExpr]
+        let elements = Array(node.elements)
+        guard elements.count == 3 else { return .visitChildren }
+        guard let leftMember = elements[0].as(MemberAccessExprSyntax.self) else { return .visitChildren }
+        let propertyName = leftMember.declName.baseName.text
+        guard propertyName == "title" else { return .visitChildren }
+        guard elements[1].is(AssignmentExprSyntax.self) else { return .visitChildren }
+        guard let literal = elements[2].as(StringLiteralExprSyntax.self) else { return .visitChildren }
+
+        let loc = converter.location(for: literal.positionAfterSkippingLeadingTrivia)
+
+        if containsInterpolation(literal) {
+            interpolations.append(.init(original: literal.description, context: ".title =", line: loc.line))
+            return .visitChildren
+        }
+
+        let english = unescapedLiteralText(literal) ?? ""
+        if !noSkipKeys, keygen.isAlreadyKeyLike(english) {
+            skipped.append(.init(key: nil, original: english, context: ".title =", line: loc.line, reason: "already_key_like"))
+            return .visitChildren
+        }
+
+        let key = keygen.makeKey(forEnglish: english)
+        let start = literal.positionAfterSkippingLeadingTrivia.utf8Offset
+        let end = literal.endPositionBeforeTrailingTrivia.utf8Offset
+
+        matches.append(.init(
+            key: key,
+            original: english,
+            context: ".title =",
+            line: loc.line,
+            startUTF8: start,
+            endUTF8: end
+        ))
+
+        edits.append(.init(start: start, end: end, replacement: "\"\(key)\""))
+        return .visitChildren
+    }
+
     private func recordSkip(expr: ExprSyntax, context: String, reason: String) {
         let pos = expr.positionAfterSkippingLeadingTrivia
         let line = converter.location(for: pos).line
@@ -494,10 +535,24 @@ final class SwiftUILiteralCollector: SyntaxVisitor {
     private func callContext(_ node: FunctionCallExprSyntax) -> String {
         if let decl = node.calledExpression.as(DeclReferenceExprSyntax.self) {
             let name = decl.baseName.text
-            if name == "Text" || name == "Button" || name == "Label" {
+            switch name {
+            case "Text", "Button", "Label",
+                 "Section", "Toggle", "Picker", "Menu", "TextField", "Link",
+                 "NavigationLink", "ProgressView", "GroupBox",
+                 "DisclosureGroup", "ShareLink":
                 return name
+            case "NSLocalizedString":
+                // Already localized (Apple macro)
+                return ""
+            case "String":
+                // Only skip if it's String(localized:)
+                if let firstLabel = node.arguments.first?.label?.text, firstLabel == "localized" {
+                    return ""
+                }
+                return ""
+            default:
+                return ""
             }
-            return ""
         }
 
         if let member = node.calledExpression.as(MemberAccessExprSyntax.self) {

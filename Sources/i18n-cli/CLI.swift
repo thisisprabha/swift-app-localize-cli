@@ -23,14 +23,24 @@ struct I18NCLI {
 
             switch subcommand {
             case "translate":
-                guard args.count == 4 else { throw UsageError.invalidArguments }
-                try await TranslateCommand.run(
-                    projectRoot: args[1],
-                    baseLang: args[2],
-                    targetLangsCSV: args[3]
-                )
+                if args.count >= 3, args[1].hasSuffix(".xcstrings") {
+                    try await TranslateXCStringsCommand.run(args: Array(args.dropFirst()))
+                } else {
+                    guard args.count == 4 else { throw UsageError.invalidArguments }
+                    try await TranslateCommand.run(
+                        projectRoot: args[1],
+                        baseLang: args[2],
+                        targetLangsCSV: args[3]
+                    )
+                }
+            case "translate-xcstrings":
+                try await TranslateXCStringsCommand.run(args: Array(args.dropFirst()))
             case "extract":
                 try await ExtractCommand.run(args: Array(args.dropFirst()))
+            case "audit":
+                try await AuditCommand.run(args: Array(args.dropFirst()))
+            case "migrate":
+                try await MigrateCommand.run(args: Array(args.dropFirst()))
             default:
                 throw UsageError.invalidArguments
             }
@@ -51,16 +61,22 @@ enum UsageError: Error {
         """
         Usage:
           i18n-cli translate <projectRoot> <baseLang> <targetLangs>
-          i18n-cli extract <projectRoot> <baseLang> [--apply] [--dry-run] [--key-prefix <prefix>] [--report <path>] [--include <csv>] [--exclude <csv>] [--overwrite-existing] [--no-skip-keys] [--stringsdict <auto|report>]
+          i18n-cli translate <path.xcstrings> --langs <csv> [--dry-run] [--context <desc>] [--model <model>]
+          i18n-cli translate-xcstrings <path.xcstrings> --langs <csv> [--dry-run] [--context <desc>]
+          i18n-cli extract <projectRoot> <baseLang> [--apply] [--dry-run] [--key-prefix <prefix>] [--report <path>] [--include <csv>] [--exclude <csv>] [--overwrite-existing] [--no-skip-keys] [--stringsdict <auto|report>] [--output-format <xcstrings|strings>]
 
         Legacy:
           i18n-cli <projectRoot> <baseLang> <targetLangs>
 
         Examples:
           i18n-cli translate /path/to/App en fr,de,es
+          i18n-cli translate /path/to/App/Localizable.xcstrings --langs fr,de,es
+          i18n-cli translate-xcstrings /path/to/App/Localizable.xcstrings --langs fr,de,es --context "fitness tracking app"
           i18n-cli extract /path/to/App en --key-prefix app
           i18n-cli extract /path/to/App en --apply
           i18n-cli extract /path/to/App en --stringsdict report
+          i18n-cli extract /path/to/App en --output-format xcstrings
+          i18n-cli extract /path/to/App en --output-format strings
         """
     }
 }

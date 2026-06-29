@@ -11,6 +11,7 @@ enum ExtractCommand {
         var overwriteExisting: Bool = false
         var noSkipKeys: Bool = false
         var stringsdictMode: StringsdictMode = .auto
+        var outputFormat: OutputFormat = .xcstrings
     }
 
     static func run(args: [String]) async throws {
@@ -57,6 +58,10 @@ enum ExtractCommand {
                 guard i + 1 < args.count else { throw UsageError.invalidArguments }
                 options.stringsdictMode = StringsdictMode(rawValue: args[i + 1]) ?? .auto
                 i += 2
+            case "--output-format":
+                guard i + 1 < args.count else { throw UsageError.invalidArguments }
+                options.outputFormat = OutputFormat(rawValue: args[i + 1]) ?? .xcstrings
+                i += 2
             default:
                 throw UsageError.invalidArguments
             }
@@ -78,6 +83,28 @@ enum ExtractCommand {
         )
 
         try extractor.run(projectRoot: rootURL, baseLang: baseLang)
+
+        if options.outputFormat == .xcstrings {
+            try writeXCStringsOutput(root: rootURL, baseLang: baseLang)
+        }
+    }
+
+    private static func writeXCStringsOutput(root: URL, baseLang: String) throws {
+        let stringsURL = root
+            .appendingPathComponent("\(baseLang).lproj")
+            .appendingPathComponent("Localizable.strings")
+
+        guard FileManager.default.fileExists(atPath: stringsURL.path) else {
+            print("No Localizable.strings found at \(stringsURL.path), skipping .xcstrings output.")
+            return
+        }
+
+        let strings = try loadStrings(at: stringsURL)
+        let doc = XCStringsIO.document(from: strings, sourceLanguage: baseLang)
+
+        let xcstringsURL = root.appendingPathComponent("Localizable.xcstrings")
+        try XCStringsIO.write(doc, to: xcstringsURL)
+        print("Wrote xcstrings -> \(xcstringsURL.path) (\(doc.strings.count) keys)")
     }
 
     private static func splitCSV(_ value: String?) -> [String] {
@@ -105,4 +132,9 @@ enum ExtractCommand {
 enum StringsdictMode: String {
     case auto
     case report
+}
+
+enum OutputFormat: String, CaseIterable {
+    case xcstrings
+    case strings
 }

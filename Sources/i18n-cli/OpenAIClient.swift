@@ -31,7 +31,7 @@ enum OpenAIError: Error {
 }
 
 final class OpenAIClient {
-    private let apiKey: String
+    let apiKey: String
 
     init() throws {
         guard let key = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
@@ -106,6 +106,68 @@ final class OpenAIClient {
             }
         }
         throw OpenAIError.badResponse
+    }
+
+    // MARK: - Model + context overload
+
+    func translate(
+        pairs: [String: String],
+        targetLanguageCode: String,
+        model: String = "gpt-4o-mini",
+        context: String? = nil
+    ) async throws -> [String: String] {
+        let jsonPairs = try JSONSerialization.data(withJSONObject: pairs, options: [.prettyPrinted])
+        let jsonString = String(data: jsonPairs, encoding: .utf8) ?? "{}"
+
+        var systemPrompt = """
+        You are a localization engine for Apple iOS apps.
+        Input is JSON of { "key": "English text" }.
+        Return ONLY JSON of the same keys mapped to the TRANSLATED text in language code \(targetLanguageCode).
+        Do not change keys, do not add or remove keys.
+        Preserve placeholders like %@, %d, \\n, and do NOT translate things that look like format specifiers.
+        """
+
+        if let context, !context.isEmpty {
+            systemPrompt += "\n\nApp context: \(context)"
+        }
+
+        let userPrompt = "Translate the following JSON:\n\(jsonString)"
+
+        let request = ChatRequest(
+            model: model,
+            messages: [
+                ChatMessage(role: "system", content: systemPrompt),
+                ChatMessage(role: "user", content: userPrompt)
+            ],
+            temperature: 0.2
+        )
+
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            print("OpenAI error: \(body)")
+            throw OpenAIError.badResponse
+        }
+
+        let chat = try JSONDecoder().decode(ChatResponse.self, from: data)
+        guard let content = chat.choices.first?.message.content else {
+            throw OpenAIError.badResponse
+        }
+
+        let parsed = try parseJSONStringDict(from: content)
+        guard !parsed.isEmpty || pairs.isEmpty else {
+            throw OpenAIError.badResponse
+        }
+
+        return parsed
     }
 
     private func jsonCandidates(from content: String) -> [String] {
