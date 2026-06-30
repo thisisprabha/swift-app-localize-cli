@@ -368,6 +368,70 @@ final class ExtractorTests: XCTestCase {
         XCTAssertTrue(strings.values.contains("Click me"), ".title = should extract string literals")
     }
 
+    // MARK: - IL-010: i18n-ignore scope expansion
+
+    func testIgnoreFileSkipsEverything() throws {
+        let tmp = try makeTempDir()
+        let (strings, _) = try _runExtraction(on: """
+        // i18n-ignore-file
+        struct View: View {
+            var body: some View {
+                Text("Ignored")
+                Button("Also ignored") { }
+            }
+        }
+        """, tmp: tmp)
+        XCTAssertTrue(strings.isEmpty, "// i18n-ignore-file should skip all strings in the file")
+    }
+
+    func testIgnoreNextSkipsOneCall() throws {
+        let tmp = try makeTempDir()
+        let (strings, _) = try _runExtraction(on: """
+        struct View: View {
+            var body: some View {
+                // i18n-ignore-next
+                Text("Skipped")
+                Text("Extracted")
+            }
+        }
+        """, tmp: tmp)
+        XCTAssertFalse(strings.values.contains("Skipped"), "// i18n-ignore-next should skip the next call")
+        XCTAssertTrue(strings.values.contains("Extracted"), "Following calls should still be extracted")
+    }
+
+    func testIgnoreBlockSkipsRange() throws {
+        let tmp = try makeTempDir()
+        let (strings, _) = try _runExtraction(on: """
+        struct View: View {
+            var body: some View {
+                Text("Before")
+                // i18n-ignore-block
+                Text("Inside block")
+                Button("Also block") { }
+                // i18n-end-ignore
+                Text("After")
+            }
+        }
+        """, tmp: tmp)
+        XCTAssertTrue(strings.values.contains("Before"), "Text before block should be extracted")
+        XCTAssertFalse(strings.values.contains("Inside block"), "// i18n-ignore-block should skip text inside block")
+        XCTAssertFalse(strings.values.contains("Also block"), "// i18n-ignore-block should skip button inside block")
+        XCTAssertTrue(strings.values.contains("After"), "Text after // i18n-end-ignore should be extracted")
+    }
+
+    func testLegacyIgnoreStillWorks() throws {
+        let tmp = try makeTempDir()
+        let (strings, _) = try _runExtraction(on: """
+        struct View: View {
+            var body: some View {
+                // i18n-ignore
+                Text("Skipped")
+            }
+        }
+        """, tmp: tmp)
+        XCTAssertFalse(strings.values.contains("Skipped"), "// i18n-ignore should still work")
+    }
+
     private func makeTempDir() throws -> URL {
         let base = URL(fileURLWithPath: NSTemporaryDirectory())
         let dir = base.appendingPathComponent("i18n-cli-tests-\(UUID().uuidString)")

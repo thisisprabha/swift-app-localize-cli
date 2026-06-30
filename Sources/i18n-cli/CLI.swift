@@ -61,9 +61,11 @@ enum UsageError: Error {
         """
         Usage:
           i18n-cli translate <projectRoot> <baseLang> <targetLangs>
-          i18n-cli translate <path.xcstrings> --langs <csv> [--dry-run] [--context <desc>] [--model <model>]
-          i18n-cli translate-xcstrings <path.xcstrings> --langs <csv> [--dry-run] [--context <desc>]
+          i18n-cli translate <path.xcstrings> --langs <csv> [--dry-run] [--context <desc>] [--model <model>] [--glossary <path>] [--context-screenshots <dir>] [--no-tm] [--clear-tm]
+          i18n-cli translate-xcstrings <path.xcstrings> --langs <csv> [options]
           i18n-cli extract <projectRoot> <baseLang> [--apply] [--dry-run] [--key-prefix <prefix>] [--report <path>] [--include <csv>] [--exclude <csv>] [--overwrite-existing] [--no-skip-keys] [--stringsdict <auto|report>] [--output-format <xcstrings|strings>]
+          i18n-cli migrate <projectRoot> [--langs <csv>] [--key-prefix <prefix>] [--dry-run] [--context <desc>]
+          i18n-cli audit <projectRoot> [--include <csv>] [--exclude <csv>]
 
         Legacy:
           i18n-cli <projectRoot> <baseLang> <targetLangs>
@@ -71,12 +73,11 @@ enum UsageError: Error {
         Examples:
           i18n-cli translate /path/to/App en fr,de,es
           i18n-cli translate /path/to/App/Localizable.xcstrings --langs fr,de,es
-          i18n-cli translate-xcstrings /path/to/App/Localizable.xcstrings --langs fr,de,es --context "fitness tracking app"
-          i18n-cli extract /path/to/App en --key-prefix app
+          i18n-cli translate-xcstrings Localizable.xcstrings --langs fr,de,es --glossary terms.json --context "fitness app"
+          i18n-cli migrate ./MyApp --langs fr,de
+          i18n-cli audit ./MyApp
           i18n-cli extract /path/to/App en --apply
-          i18n-cli extract /path/to/App en --stringsdict report
           i18n-cli extract /path/to/App en --output-format xcstrings
-          i18n-cli extract /path/to/App en --output-format strings
         """
     }
 }

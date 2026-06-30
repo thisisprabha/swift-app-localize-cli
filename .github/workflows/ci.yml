@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal binary
+        run: |
+          swift build -c release --arch arm64 --arch x86_64
+          cd .build/apple/Products/Release
+          zip -r i18n-cli-universal.zip i18n-cli
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .build/apple/Products/Release/i18n-cli-universal.zip

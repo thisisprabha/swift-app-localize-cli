@@ -1,122 +1,133 @@
-# Swift app localize CLI
+# i18n-cli — Swift App Localization CLI
 
-A SwiftPM-based CLI that extracts base English localizations from SwiftUI code and translates them to other languages using the OpenAI API. It supports diff-based translation, batch processing, and optional `.stringsdict` auto-generation for strict plural patterns.
+**One command finds every hardcoded string in your SwiftUI app, rewrites it to a localization key, generates `Localizable.xcstrings`, and translates to 10 languages.** Uses SwiftSyntax AST parsing — nobody else does the extract step.
 
-## Features
-- Extract SwiftUI literals to `en.lproj/Localizable.strings`
-- Optional in-place rewrite of SwiftUI literals to localization keys
-- Translate base strings to multiple languages via OpenAI
-- Diff-based translation (only new/changed keys)
-- `.stringsdict` auto-generation for strict plural formats
-- JSON report output for auditing
+## Three Commands
 
-## Requirements
-- macOS 13+
-- Swift 5.9+ (Xcode Command Line Tools)
-- OpenAI API key for `translate`
-
-## Install (Quick)
 ```bash
-swift build -c release
+# THE WEDGE — extract, rewrite, xcstrings, translate in one pass
+i18n-cli migrate ./MyApp --langs fr,de,es
+
+# TABLE STAKES — translate new strings in an existing .xcstrings
+i18n-cli translate Localizable.xcstrings --langs fr,de,es
+
+# SAFETY NET — CI gate for regressions
+i18n-cli audit ./MyApp
 ```
-
-Binary:
-- `./.build/release/i18n-cli`
-
-## Install (Non-Technical)
-1. Go to the GitHub repo page and click **Code → Download ZIP**.
-2. Unzip the file (you will get a folder like `swift-app-localize-cli`).
-3. Open **Terminal**.
-4. Type `cd ` (with a space), then drag the unzipped folder into Terminal and press Enter.
-5. Run:
-   ```bash
-   swift build -c release
-   ```
-
-If you see a prompt to install Xcode Command Line Tools, accept it.
 
 ## Quick Start
-```bash
-# Extract base English and rewrite SwiftUI literals
-./.build/release/i18n-cli extract /path/to/App en --apply
 
-# Translate into multiple languages
+```bash
+# Build
+swift build -c release
+
+# Export your OpenAI API key
 export OPENAI_API_KEY="sk-..."
-./.build/release/i18n-cli translate /path/to/App en "fr,de,es"
+
+# 🚀 Full pipeline: extract → rewrite → translate
+./.build/release/i18n-cli migrate ./MyApp --langs fr,de,es --context "fitness tracking app"
 ```
+
+## Features
+
+- **AST extraction** — SwiftSyntax walks your code, finds `Text("Hello")` / `Button("OK")` / `.navigationTitle("Home")` and 15+ other SwiftUI views
+- **In-place rewrite** — `Text("Hello")` → `Text("app.hello_a1b2c3d4")` with stable SHA256-based keys
+- **XCStrings output** — modern Xcode 15+ `.xcstrings` format (default, sorted keys, proper field ordering)
+- **Diff-based translation** — only new/changed keys are sent to the LLM, cached per language
+- **Translation memory** — `(sourceText, lang) → translation` cache for zero-API-cost repeats
+- **Placeholder validation** — detects mismatched `%d`, `%@`, `\n` in translations
+- **Glossary support** — `--glossary terms.json` for consistent domain terminology
+- **Context screenshots** — `--context-screenshots <dir>` includes UI screenshots in LLM prompts
+- **Legacy compatibility** — `.strings` / `.stringsdict` output via `--output-format strings`
+- **Plural detection** — auto-generates `.stringsdict` for `"%d moves"` / `"%d move(s)"` patterns
+- **Audit mode** — read-only scan, exit code 1 in CI when unlocalized strings found
+
+## Requirements
+
+- macOS 13+
+- Swift 5.9+ (Xcode Command Line Tools)
+- OpenAI API key for `translate` / `migrate`
 
 ## Commands
 
-### extract
+### `migrate` (hero command)
 ```
-i18n-cli extract <projectRoot> <baseLang> [--apply] [--dry-run] [--key-prefix <prefix>] [--report <path>] [--include <csv>] [--exclude <csv>] [--overwrite-existing] [--no-skip-keys] [--stringsdict <auto|report>]
+i18n-cli migrate <projectRoot> [--langs <csv>] [--key-prefix <prefix>] [--dry-run] [--context <desc>]
 ```
+Chains: AST walk → source rewrite → .xcstrings generation → LLM translation. If `--langs` is omitted, extract-only.
 
-- `--apply`: rewrite SwiftUI literals to keys
-- `--dry-run`: generate strings + report only (no code rewrite)
-- `--key-prefix <prefix>`: key namespace (default `app`)
-- `--report <path>`: report output path (default `.i18n-cache/extract-report.json`)
-- `--include <csv>`: limit scan to specific paths
-- `--exclude <csv>`: exclude paths
-- `--overwrite-existing`: overwrite existing values in `Localizable.strings` and `.stringsdict`
-- `--no-skip-keys`: treat key-looking literals as translatable
-- `--stringsdict <auto|report>`: auto-generate `.stringsdict` (default `auto`) or report-only
+### `translate` (xcstrings)
+```
+i18n-cli translate <path.xcstrings> --langs <csv> [--dry-run] [--context <desc>] [--model <model>] [--glossary <path>] [--context-screenshots <dir>] [--no-tm] [--clear-tm]
+```
+Loads an existing `.xcstrings`, diffs against cache, batch-translates untranslated keys, writes back. Auto-detected when path ends in `.xcstrings`.
 
-### translate
+### `translate` (legacy .strings)
 ```
 i18n-cli translate <projectRoot> <baseLang> <targetLangs>
 ```
-- `targetLangs` is comma-separated, e.g. `fr,de,es`
-- Requires `OPENAI_API_KEY`
+Original `.strings`-based translate path. Preserved for backward compatibility.
 
-## Example Workflows
-
-### First Time Setup
-```bash
-./.build/release/i18n-cli extract /path/to/App en --apply
-./.build/release/i18n-cli translate /path/to/App en "fr,de,es"
+### `extract`
+```
+i18n-cli extract <projectRoot> <baseLang> [--apply] [--dry-run] [--key-prefix <prefix>] [--report <path>] [--include <csv>] [--exclude <csv>] [--overwrite-existing] [--no-skip-keys] [--stringsdict <auto|report>] [--output-format <xcstrings|strings>]
 ```
 
-### Day-to-Day Updates
-```bash
-./.build/release/i18n-cli extract /path/to/App en --apply
-./.build/release/i18n-cli translate /path/to/App en "fr,de,es"
+### `audit`
+```
+i18n-cli audit <projectRoot> [--include <csv>] [--exclude <csv>]
+```
+Read-only AST scan. Reports unlocalized strings to stdout. Exit code 1 if findings found — use as a CI gate.
+
+## Supported SwiftUI Views
+
+`Text`, `Button`, `Label`, `.navigationTitle`, `.alert`, `.confirmationDialog`, `Section`, `Toggle`, `Picker`, `Menu`, `TextField`, `Link`, `NavigationLink`, `ProgressView`, `GroupBox`, `DisclosureGroup`, `ShareLink`
+
+## Supported UIKit Patterns
+
+- `NSLocalizedString("...", comment:)` — skipped (already localized)
+- `String(localized: "...")` — skipped (already localized)
+- `.title = "..."` — detected as assignment
+
+## Ignore Directives
+
+```swift
+// i18n-ignore        — skip the next expression
+// i18n-ignore-file   — skip the entire file
+// i18n-ignore-next   — skip the next call
+// i18n-ignore-block
+// ... calls in block are skipped
+// i18n-end-ignore
 ```
 
-## .stringsdict Behavior
-Auto-generation is **strict** and only triggers for obvious plural formats like:
-- `"%d moves"`
-- `"%d move(s)"`
-- `"%d tries"`
+## Example Workflow
 
-If your app uses interpolation like `"\(count) moves"`, it will be skipped and reported.
-Use `--stringsdict report` to disable auto-generation.
+```bash
+# First time setup
+export OPENAI_API_KEY="sk-..."
+i18n-cli migrate ./MyApp --langs fr,de,es,zh-Hans --context "fitness tracking app"
+
+# Day-to-day: just re-extract and translate new strings
+i18n-cli migrate ./MyApp --langs fr,de,es,zh-Hans
+
+# Or manually translate a xcstrings file
+i18n-cli translate Localizable.xcstrings --langs fr,de
+
+# CI gate
+i18n-cli audit ./MyApp || exit 1
+```
 
 ## Outputs
-- Base English: `<projectRoot>/en.lproj/Localizable.strings`
-- Base plurals: `<projectRoot>/en.lproj/Localizable.stringsdict` (when generated)
-- Cache + report: `<projectRoot>/.i18n-cache/*`
 
-## Limitations
-- SwiftUI-only extraction (no UIKit/AppKit yet)
-- Interpolated strings are skipped and reported
-- `.stringsdict` generation is strict and conservative
+- `<projectRoot>/Localizable.xcstrings` — Xcode 15+ string catalog (primary format)
+- `<projectRoot>/en.lproj/Localizable.strings` — legacy `.strings` (when `--output-format strings`)
+- `<projectRoot>/en.lproj/Localizable.stringsdict` — plural rules (auto-generated)
+- `<projectRoot>/.i18n-cache/*` — diff cache, translation memory, reports
 
 ## Security
+
 Do not commit API keys. Use `OPENAI_API_KEY` in your shell environment.
 
-## Release Checklist
-- Run `swift test`
-- Run `swift build -c release`
-- Verify `extract` and `translate` on a sample app
-- Confirm README examples are up to date
-- Tag the release (e.g., `git tag -a v0.1.0 -m "v0.1.0"`)
-
-## Roadmap
-- UIKit/AppKit extraction
-- Interpolation handling for pluralization
-- Advanced `.stringsdict` rules
-- Homebrew/Mint install options
-
 ## License
+
 MIT

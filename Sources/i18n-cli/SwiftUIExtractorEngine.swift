@@ -409,11 +409,13 @@ final class SwiftUILiteralCollector: SyntaxVisitor {
     let converter: SourceLocationConverter
     let keygen: KeyGenerator
     let noSkipKeys: Bool
+    let fileIgnored: Bool
 
     var matches: [Match] = []
     var skipped: [Skip] = []
     var interpolations: [Interpolation] = []
     var edits: [SourceEdit] = []
+    var ignoreBlockCount: Int = 0
 
     init(
         filePath: String,
@@ -427,14 +429,25 @@ final class SwiftUILiteralCollector: SyntaxVisitor {
         self.converter = converter
         self.keygen = keygen
         self.noSkipKeys = noSkipKeys
+        // Check for // i18n-ignore-file in the first few lines
+        let firstLines = source.prefix(2048)
+        self.fileIgnored = firstLines.contains("i18n-ignore-file")
         super.init(viewMode: .sourceAccurate)
     }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+        if fileIgnored { return .skipChildren }
+
+        handleBlockIgnoreTrivia(node.leadingTrivia)
+
+        if ignoreBlockCount > 0 {
+            return .visitChildren
+        }
+
         let context = callContext(node)
         guard !context.isEmpty else { return .visitChildren }
 
-        if triviaHasIgnore(node.leadingTrivia) {
+        if triviaContainsIgnoreDirective(node.leadingTrivia) {
             // Skip entire callsite if ignore comment is attached.
             return .skipChildren
         }
@@ -486,6 +499,11 @@ final class SwiftUILiteralCollector: SyntaxVisitor {
     }
 
     override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
+        if fileIgnored { return .skipChildren }
+
+        handleBlockIgnoreTrivia(node.leadingTrivia)
+        if ignoreBlockCount > 0 { return .visitChildren }
+
         // Detect .title = "..." patterns on UIKit types
         // SequenceExpr wraps: [MemberAccessExpr, AssignmentExpr, StringLiteralExpr]
         let elements = Array(node.elements)
@@ -566,13 +584,37 @@ final class SwiftUILiteralCollector: SyntaxVisitor {
         return ""
     }
 
-    private func triviaHasIgnore(_ trivia: Trivia) -> Bool {
+    /// Check leading trivia for block ignore directives and update the block counter.
+    private func handleBlockIgnoreTrivia(_ trivia: Trivia) {
         for piece in trivia {
+            let text: String
             switch piece {
-            case .lineComment(let text), .blockComment(let text), .docLineComment(let text), .docBlockComment(let text):
-                if text.contains("i18n-ignore") { return true }
+            case .lineComment(let t), .blockComment(let t), .docLineComment(let t), .docBlockComment(let t):
+                text = t
             default:
                 continue
+            }
+            if text.contains("i18n-ignore-block") {
+                ignoreBlockCount += 1
+            }
+            if text.contains("i18n-end-ignore") {
+                ignoreBlockCount = max(0, ignoreBlockCount - 1)
+            }
+        }
+    }
+
+    /// Check if trivia contains an ignore directive (i18n-ignore or i18n-ignore-next).
+    private func triviaContainsIgnoreDirective(_ trivia: Trivia) -> Bool {
+        for piece in trivia {
+            let text: String
+            switch piece {
+            case .lineComment(let t), .blockComment(let t), .docLineComment(let t), .docBlockComment(let t):
+                text = t
+            default:
+                continue
+            }
+            if text.contains("i18n-ignore") || text.contains("i18n-ignore-next") {
+                return true
             }
         }
         return false

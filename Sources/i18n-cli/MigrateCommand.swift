@@ -56,7 +56,15 @@ struct MigrateCommand {
 
         try extractor.run(projectRoot: root, baseLang: "en")
 
+        // Generate .xcstrings from extraction output
+        let baseStringsURL = root.appendingPathComponent("en.lproj/Localizable.strings")
         let xcstringsURL = root.appendingPathComponent("Localizable.xcstrings")
+        if FileManager.default.fileExists(atPath: baseStringsURL.path) {
+            let strings = try loadStrings(at: baseStringsURL)
+            let doc = XCStringsIO.document(from: strings)
+            try XCStringsIO.write(doc, to: xcstringsURL)
+            print("Wrote xcstrings -> \(xcstringsURL.path) (\(doc.strings.count) keys)")
+        }
 
         if langs.isEmpty {
             print("No --langs specified. Extract complete (no translation).")
